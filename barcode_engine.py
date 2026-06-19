@@ -3,7 +3,7 @@ import tempfile
 
 from PIL import Image
 
-from barcode import EAN13
+from barcode import EAN13, Code128
 from barcode.writer import ImageWriter
 
 from reportlab.lib.pagesizes import A4
@@ -61,49 +61,45 @@ def format_ean13_number(value):
     return value
 
 
-def to_ean13_digits(barcode_value):
-    """
-    Memaksa nilai barcode apapun menjadi 12 digit angka
-    sehingga library bisa menghitung check digit ke-13 secara otomatis.
-
-    Aturan:
-    - Ambil hanya karakter angka dari nilai asli.
-    - Kalau lebih dari 12 digit -> ambil 12 digit terakhir.
-    - Kalau kurang dari 12 digit -> pad nol di depan.
-    """
-    digits_only = "".join(c for c in barcode_value if c.isdigit())
-    if len(digits_only) > 12:
-        digits_only = digits_only[-12:]
-    else:
-        digits_only = digits_only.zfill(12)
-    return digits_only
-
-
 def create_barcode(barcode_value, file_path):
     """
     Membuat GAMBAR BARCODE SAJA (tanpa teks bawaan library).
-    Selalu menghasilkan EAN-13 apapun input-nya.
+    Teks angka digambar terpisah belakangan di generate_pdf(),
+    sehingga posisinya bisa dikontrol penuh dan tidak akan pernah
+    menyatu/tumpang tindih dengan batang barcode.
 
-    Mengembalikan kode final 13 digit (termasuk check digit)
-    agar teks yang ditampilkan SELALU sinkron dengan barcode
-    yang sebenarnya bisa di-scan.
+    Mengembalikan kode final yang benar-benar dipakai oleh barcode
+    (termasuk check digit hasil perhitungan ulang library untuk
+    EAN-13), agar teks yang ditampilkan SELALU sinkron dengan
+    barcode yang sebenarnya bisa di-scan.
     """
 
     writer_options = {
         "module_width": 0.25,
         "module_height": 15,
         "quiet_zone": 2,
-        "write_text": False,
+        "write_text": False,   # <-- KUNCI PERBAIKAN: matikan teks bawaan
         "dpi": 600
     }
 
-    # Selalu paksa ke EAN-13
-    ean12 = to_ean13_digits(barcode_value)
+    if barcode_value.isdigit() and len(barcode_value) in (12, 13):
 
-    barcode_obj = EAN13(
-        ean12,
-        writer=ImageWriter()
-    )
+        # EAN13 library menerima 12 digit dan menghitung check digit ke-13
+        # secara otomatis.
+        # - 12 digit: langsung dipakai sebagai input (check digit dihitung)
+        # - 13 digit: buang digit terakhir, biarkan library hitung ulang
+        #   agar check digit selalu akurat.
+        barcode_obj = EAN13(
+            barcode_value[:12],
+            writer=ImageWriter()
+        )
+
+    else:
+
+        barcode_obj = Code128(
+            barcode_value,
+            writer=ImageWriter()
+        )
 
     barcode_obj.save(
         file_path,
